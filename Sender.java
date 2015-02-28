@@ -3,12 +3,10 @@ package reliableNet;
 import java.net.*;
 import java.util.*;
 import java.io.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
 import java.nio.ByteBuffer;
-//
+
 public class Sender {
 	static int pkt_size = 900;
 	static int windowSize = 10;
