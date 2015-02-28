@@ -8,28 +8,28 @@ import java.util.zip.Checksum;
 import java.nio.ByteBuffer;
 
 public class Sender {
-	static int pkt_size = 900;
-	static int windowSize = 10;
-	static short base = 0;
-	static long timeout = 20;
-	static int max = 1000;
-	static Timer[] timerArr = new Timer[max];
-	static byte[] timerOn = new byte[max];
-	static byte[] acked = new byte[max];
-	static boolean inDone = false;
-	static boolean sk_in_close = false;
+	private static final int WINDOW_SIZE = 10;
+	private static final int MAX_SIZE = 1000;
+	
+	static Timer[] timerArray = new Timer[MAX_SIZE];
+	static byte[] timerOn = new byte[MAX_SIZE];
+	static byte[] acked = new byte[MAX_SIZE];
+	static boolean inThreadDone = false;
+	static boolean socketInthreadClosed = false;
 	static short endSeq = -3;
 	static boolean endSent = false;
-	static DatagramPacket[] store = new DatagramPacket[max];
-	boolean check = false;
+	static DatagramPacket[] storedPackets = new DatagramPacket[MAX_SIZE];
 	private double esRTT = 0;
 	private double devRTT = 0;
-	private long[] startTime = new long[max];
-	private boolean first = true;
+	private long[] startTime = new long[MAX_SIZE];
+	private boolean firstReceivedPacket = true;	
+	static short base = 0;
+	static long timeout = 20;
 
 	// *** OutThread *** //	
 
 	public class OutThread extends Thread {
+		private static final String KEY = "V4&g!d)56#()VJD";
 		private DatagramSocket sk_out;
 		private int dst_port;
 		private String path;
@@ -45,20 +45,20 @@ public class Sender {
 		}
 
 		public boolean fullWindow() {
-			short base1 = base;
-			short nextSeq1 = nextSeq;
-			if ((base1 >= 0) && (base1 <= max - 11)
-					&& (nextSeq1 == base1 + windowSize))
+			short baseValue = base;
+			short nextSeqValue = nextSeq;
+			if ((baseValue >= 0) && (baseValue <= MAX_SIZE - WINDOW_SIZE - 1)
+					&& (nextSeqValue == baseValue + WINDOW_SIZE))
 				return true;
-			if ((base1 >= max - 10) && (base1 <= max - 1)
-					&& (nextSeq1 == base1 - (max - 10)))
+			if ((baseValue >= MAX_SIZE - WINDOW_SIZE) && (baseValue <= MAX_SIZE - 1)
+					&& (nextSeqValue == baseValue - (MAX_SIZE - WINDOW_SIZE)))
 				return true;
 			return false;
 		}
 
 		public void resendPackets(short seq) throws IOException {
-			if (acked[seq] == 1 && store[seq] != null) {
-				DatagramPacket pkt = store[seq];
+			if (acked[seq] == 1 && storedPackets[seq] != null) {
+				DatagramPacket pkt = storedPackets[seq];
 				sk_out.send(pkt);
 				startTime[seq] = System.currentTimeMillis();
 			}
@@ -66,7 +66,7 @@ public class Sender {
 
 		public void startTimer(long setTimeout, short seq)
 				throws InterruptedException, IOException {
-			final short seq1 = seq;
+			final short seqValue = seq;
 			if (setTimeout <= 0)
 				setTimeout = 20;
 			if (endSent)
@@ -76,15 +76,15 @@ public class Sender {
 				@Override
 				public void run() {
 					try {
-						resendPackets(seq1);
+						resendPackets(seqValue);
 					} catch (IOException e) {
 						e.printStackTrace();
 					}
 				}
 			};
 			if (acked[seq] == 1 && timerOn[seq] == 0) {
-				timerArr[seq] = new Timer();
-				timerArr[seq].schedule(timerTask, setTimeout, setTimeout);
+				timerArray[seq] = new Timer();
+				timerArray[seq].schedule(timerTask, setTimeout, setTimeout);
 				timerOn[seq] = 1;
 			}
 		}
@@ -95,34 +95,34 @@ public class Sender {
 			return buffer.array();
 		}
 
-		public void makeStoreAndSendPackets(byte[] buf, int c,
+		public void createStoreAndSendPackets(byte[] buffer, int length,
 				InetAddress dst_addr) throws IOException, InterruptedException,
 				SocketException {
-			short nextSeq1 = nextSeq;
-			byte[] seqArr = shortToBytes(nextSeq1);
-			byte[] checksumArr = calChecksum(buf, c);
-			buf[c] = seqArr[0];
-			buf[c+1] = seqArr[1];
-			c=c+2;
+			short nextSeqValue = nextSeq;
+			byte[] seqArr = shortToBytes(nextSeqValue);
+			byte[] checksumArr = calChecksum(buffer, length);
+			buffer[length] = seqArr[0];
+			buffer[length+1] = seqArr[1];
+			length=length+2;
 			for (int i = 0; i < 8; i++)
-				buf[c + i] = checksumArr[i];
+				buffer[length + i] = checksumArr[i];
 
-			DatagramPacket out_pkt = new DatagramPacket(buf, 0, c + 8,
+			DatagramPacket out_pkt = new DatagramPacket(buffer, 0, length + 8,
 					dst_addr, dst_port);
 
-			store[nextSeq1] = out_pkt;
-			acked[nextSeq1] = 1;
-			timerOn[nextSeq1] = 0;
+			storedPackets[nextSeqValue] = out_pkt;
+			acked[nextSeqValue] = 1;
+			timerOn[nextSeqValue] = 0;
 			sk_out.send(out_pkt);
 
-			startTime[nextSeq1] = System.currentTimeMillis();
+			startTime[nextSeqValue] = System.currentTimeMillis();
 
-			if (nextSeq == max - 1)
+			if (nextSeq == MAX_SIZE - 1)
 				nextSeq = 0;
 			else
 				nextSeq++;
 
-			startTimer(timeout, nextSeq1);
+			startTimer(timeout, nextSeqValue);
 		}
 
 		// *** OutThread run *** //
@@ -134,18 +134,18 @@ public class Sender {
 				try {
 					File file = new File(path);
 					InputStream is = new FileInputStream(file);
-					int c;
-					byte[] buf = new byte[200];
+					int numBytesRead;
+					byte[] buffer = new byte[200];
 					byte[] bufFile = fileName.getBytes();
 					for (int i = 0; i < bufFile.length; i++)
-						buf[i] = bufFile[i];
+						buffer[i] = bufFile[i];
 
-					makeStoreAndSendPackets(buf, bufFile.length, dst_addr);
+					createStoreAndSendPackets(buffer, bufFile.length, dst_addr);
 
-					buf = new byte[900];
-					while ((c = is.read(buf, 0, 890)) != -1) {
-						makeStoreAndSendPackets(buf, c, dst_addr);
-						buf = new byte[900];
+					buffer = new byte[900];
+					while ((numBytesRead = is.read(buffer, 0, 890)) != -1) {
+						createStoreAndSendPackets(buffer, numBytesRead, dst_addr);
+						buffer = new byte[900];
 
 							while (fullWindow()) {
 							}
@@ -155,7 +155,7 @@ public class Sender {
 
 					byte[] bufEnd = new byte[100];
 					endSeq = nextSeq;
-					byte[] bufEndBytes = (new String("V4&g!d)56#()VJD"))
+					byte[] bufEndBytes = (new String(KEY))
 							.getBytes();
 					int len = bufEndBytes.length;
 					for (int i = 0; i < len; i++)
@@ -165,11 +165,10 @@ public class Sender {
 					for (int i = 0; i < 8; i++)
 						bufEnd[len + i] = arr[i];
 					endSent = true;
-					check = true;
 
-					makeStoreAndSendPackets(bufEnd, len + 8, dst_addr);
+					createStoreAndSendPackets(bufEnd, len + 8, dst_addr);
 
-					while (!sk_in_close) {
+					while (!socketInthreadClosed) {
 					}
 					sk_out.close();
 					System.exit(3);
@@ -244,7 +243,7 @@ public class Sender {
 						in_data.length);
 
 				try {
-					while (!inDone) {
+					while (!inThreadDone) {
 						sk_in.receive(in_pkt);
 						short base1 = base;
 						byte[] seqArr = new byte[2];
@@ -253,9 +252,9 @@ public class Sender {
 						short seq = bytesToShort(seqArr);
 						boolean inWindow = false;
 
-						if ( ( base1 <= (max - 10) && (seq >= base1 && seq <= (base1 + 9) ))
-								|| ((base1 > (max - 10)) && !(seq < base1 && seq > base1
-										- (max - 9))))
+						if ( ( base1 <= (MAX_SIZE - WINDOW_SIZE) && (seq >= base1 && seq <= (base1 + WINDOW_SIZE - 1) ))
+								|| ((base1 > (MAX_SIZE - WINDOW_SIZE)) && !(seq < base1 && seq > base1
+										- (MAX_SIZE - WINDOW_SIZE + 1))))
 							inWindow = true;
 
 						if (inWindow
@@ -263,7 +262,7 @@ public class Sender {
 										in_pkt.getData())) {
 
 							if (timerOn[seq] == 1) {
-								timerArr[seq].cancel();
+								timerArray[seq].cancel();
 								timerOn[seq] = -1;
 							}
 
@@ -272,52 +271,52 @@ public class Sender {
 							if (seq == base)
 								while (acked[update] == -1) {
 
-									if (update == max - 1)
+									if (update == MAX_SIZE - 1)
 										base = 0;
 									else
 										base = (short) (update + 1);
 
 									if (base == 0)
-										acked[max - 1] = 0;
+										acked[MAX_SIZE - 1] = 0;
 									else
 										acked[base - 1] = 0;
 
-									if (update == max - 1)
+									if (update == MAX_SIZE - 1)
 										update = 0;
 									else
 										update++;
 								}
 
-							store[seq] = null;
+							storedPackets[seq] = null;
 
-							if (check) {
+							if (endSent) {
 								boolean finished = true;
-								for (int i = 0; i < max; i++)
+								for (int i = 0; i < MAX_SIZE; i++)
 									if (acked[i] == 1)
 										finished = false;
 								if (finished) {
-									inDone = true;
+									inThreadDone = true;
 								}
 							}
 
 							long endTime = System.currentTimeMillis();
 							double samRTT = endTime - startTime[seq];
 
-							if (!first) {
+							if (!firstReceivedPacket) {
 								devRTT = (0.75 * devRTT + 0.25 * Math
 										.abs(samRTT - esRTT));
 								esRTT = (0.875 * esRTT + 0.125 * samRTT);
 							} else {
 								devRTT = samRTT / 2;
 								esRTT = samRTT;
-								first = false;
+								firstReceivedPacket = false;
 							}
 
 							timeout = (long) (esRTT + 4 * devRTT);
 						}
 					}
 
-					sk_in_close = true;
+					socketInthreadClosed = true;
 					sk_in.close();
 
 				} catch (Exception e) {

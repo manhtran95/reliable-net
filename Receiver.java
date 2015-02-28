@@ -7,19 +7,21 @@ import java.io.*;
 import java.nio.ByteBuffer;
 
 public class Receiver {
+	private static final String KEY = "V4&g!d)56#()VJD";
+	private static final int MAX_SIZE = 1000;
+
 	static int pkt_size = 900;
 	static short base = 0;
 	static String fileName;
-	static int max = 1000;
 	static boolean firstPacket = true;
 	static Timer timer;
 	static boolean timerOn = false;
 	static DatagramSocket sk2, sk3;
 	static long timeout = 500;
 	BufferedWriter bw;
-	boolean bwClose = false;
+	boolean bwClosed = false;
 	boolean check = false;
-	byte[] buffered = new byte[max];
+	byte[] buffered = new byte[MAX_SIZE];
 
 	// *** Calculate Checksum *** //
 
@@ -65,7 +67,7 @@ public class Receiver {
 				try {
 					if (check) {
 						boolean finished = true;
-						for (int i = 0; i < max; i++)
+						for (int i = 0; i < MAX_SIZE; i++)
 							if (buffered[i] == 1) {
 								finished = false;
 							}
@@ -125,15 +127,13 @@ public class Receiver {
 		try {
 			sk2 = new DatagramSocket(sk2_dst_port);
 			sk3 = new DatagramSocket();
-			boolean firstEnd = true;
 			try {
 				byte[] in_data = new byte[pkt_size];
 				DatagramPacket in_pkt = new DatagramPacket(in_data,
 						in_data.length);
 				InetAddress dst_addr = InetAddress.getByName("127.0.0.1");
 				byte[] out_data = new byte[10];
-				DatagramPacket out_pkt;
-				String[] store = new String[max];
+				String[] store = new String[MAX_SIZE];
 				boolean inWindow = false;
 				boolean noted = false;
 				byte seqArr[] = new byte[2];
@@ -202,19 +202,19 @@ public class Receiver {
 					
 					short base1 = base;
 
-					if ((base1 <= max-10 && (seq >= base1 && seq <= base1 + 9))
-							|| ((base1 > max-10) && !(seq < base1 && seq > base1 - (max-9)))) {
+					if ((base1 <= MAX_SIZE-10 && (seq >= base1 && seq <= base1 + 9))
+							|| ((base1 > MAX_SIZE-10) && !(seq < base1 && seq > base1 - (MAX_SIZE-9)))) {
 						inWindow = true;
 					}
 
 					if (inWindow
 							&& !corrupt(in_pkt.getLength(), in_pkt.getData())) {
 
-						if (str.substring(0, 15).equals("V4&g!d)56#()VJD")) {							
+						if (str.substring(0, 15).equals(KEY)) {							
 							
 							check = true;
 							byte[] timeoutArr = new byte[8];
-							byte[] endArr = (new String("V4&g!d)56#()VJD"))
+							byte[] endArr = (new String(KEY))
 									.getBytes();
 							int len = endArr.length;
 							for (int i = len; i < len + 8; i++)
@@ -223,13 +223,13 @@ public class Receiver {
 							startTimer();
 
 							if (seq == base) {
-								if (base == max-1)
+								if (base == MAX_SIZE-1)
 									base = 0;
 								else
 									base++;
 
 								if (base == 0) {
-									buffered[max-1] = 0;
+									buffered[MAX_SIZE-1] = 0;
 								}
 								else {
 									buffered[base - 1] = 0;
@@ -250,24 +250,24 @@ public class Receiver {
 								bw.flush();
 								buffered[k] = 3;
 								store[k] = null;
-								if (k == max-1)
+								if (k == MAX_SIZE-1)
 									k = 0;
 								else
 									k++;
-								if (base == max-1)
+								if (base == MAX_SIZE-1)
 									base = 0;
 								else
 									base++;
 
 								if (base == 0) {
-									buffered[max-1] = 0;
+									buffered[MAX_SIZE-1] = 0;
 								}
 								else {
 									buffered[base - 1] = 0;
 								}
 							}
 					}
-					else if ((((base1 >= 10) && (seq >= base1 - 10 && seq <= base1 - 1)) || (base1 < 10 && !(seq >= base1 && seq <= base1 + max-11)))
+					else if ((((base1 >= 10) && (seq >= base1 - 10 && seq <= base1 - 1)) || (base1 < 10 && !(seq >= base1 && seq <= base1 + MAX_SIZE-11)))
 							&& !corrupt(in_pkt.getLength(), in_pkt.getData())) {
 						sendPacket(out_data, dst_addr, sk3_dst_port);
 					}
