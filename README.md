@@ -1,5 +1,3 @@
-# reliableNet
-
 # overview
 The task is to write a sender program and a receiver program which can reliably communicate with each other over UDP (User Datagram Protocol). In other words, we need to design and implement an application level protocol which can achieve reliable file transfer on top of UDP.
 
