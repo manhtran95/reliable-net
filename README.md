@@ -8,6 +8,7 @@ UnreliNET-Normal.java, UnreliNETCorrupt.java, UnreliNETReorder.java, UnreliNETDr
 Packets passing through the UnreliNet may be corrupted, dropped or reordered with certain probability. We need to design a reliable protocol so that files can be successfully transferred sucessfully.
 
 # UnreliNet Program
+To run the program, start the UnreliNet first, and then start the Receiver and finally start the Sender.
 To start the UnreliNet:
 java UnreliNet sk1 port sk2 port sk3 port sk4 port ratio |
 e.g. java UnreliNETNormal 10000 10001 10002 10003 |
